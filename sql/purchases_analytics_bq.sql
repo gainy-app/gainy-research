@@ -469,83 +469,132 @@ with vars as
 --                            ) unlock_details_window_metrics using (stats_id)
 --     )
 
-   , user_metrics as
-    (
-        with event_metrics as
-                 (
-                     select uid,
-                            stats_id,
-                            event_name,
-                            count(uid) as cnt,
-                            1          as cnt_distinct,
-                     from (
-                              select uid,
-                                     stats_id,
-                                     event_name,
-                              from events
-                                       join user_stats_config using (uid)
-                              where event_name in ('try_premium_tapped',
-                                                   'purchase_details',
-                                                   'portfolio_plaid_link_success')
-                          ) ttf_events
-                     group by uid, stats_id, event_name
-                 )
-        select stats_id,
-               users_cnt,
-               try_premium_tapped_cnt_avg,
-               try_premium_tapped_cnt_distinct_avg,
-               purchase_details_cnt_avg,
-               purchase_details_cnt_distinct_avg,
-portfolio_plaid_link_success_cnt_distinct_avg,
-        from stats_config
-                 left join (
-                               select user_stats_config.stats_id,
-                                      count(distinct user_stats_config.uid) as users_cnt,
-                                      avg(coalesce(em5.cnt, 0))          as try_premium_tapped_cnt_avg,
-                                      avg(coalesce(em5.cnt_distinct, 0)) as try_premium_tapped_cnt_distinct_avg,
-                                      avg(coalesce(em6.cnt, 0))          as purchase_details_cnt_avg,
-                                      avg(coalesce(em6.cnt_distinct, 0)) as purchase_details_cnt_distinct_avg,
-                                      avg(coalesce(em7.cnt_distinct, 0)) as portfolio_plaid_link_success_cnt_distinct_avg,
-                               from user_stats_config
-                                        left join event_metrics em5
-                                                  on em5.uid = user_stats_config.uid
-                                                      and em5.event_name = 'try_premium_tapped'
-                                        left join event_metrics em6
-                                                  on em6.uid = user_stats_config.uid
-                                                      and em6.event_name = 'purchase_details'
-                                        left join event_metrics em7
-                                                  on em7.uid = user_stats_config.uid
-                                                      and em7.event_name = 'portfolio_plaid_link_success'
-                               group by user_stats_config.stats_id
-                           ) t using (stats_id)
-                 left join (
-                               select distinct user_stats_config.stats_id,
-                                               PERCENTILE_DISC(COALESCE(cnt, 0), 0.5)
-                                                               OVER (PARTITION BY user_stats_config.stats_id) as try_premium_tapped_cnt_median,
-                                               PERCENTILE_DISC(COALESCE(cnt, 0), 0.75)
-                                                               OVER (PARTITION BY user_stats_config.stats_id) as try_premium_tapped_cnt_percentile_75,
-                                               PERCENTILE_DISC(COALESCE(cnt, 0), 0.9)
-                                                               OVER (PARTITION BY user_stats_config.stats_id) as try_premium_tapped_cnt_percentile_90,
-                               from user_stats_config
-                                        left join event_metrics
-                                                  on event_metrics.uid = user_stats_config.uid
-                                                      and event_metrics.event_name = 'try_premium_tapped'
-                           ) try_premium_tapped_window_metrics using (stats_id)
-                 left join (
-                               select distinct user_stats_config.stats_id,
-                                               PERCENTILE_DISC(COALESCE(cnt, 0), 0.5)
-                                                               OVER (PARTITION BY user_stats_config.stats_id) as purchase_details_cnt_median,
-                                               PERCENTILE_DISC(COALESCE(cnt, 0), 0.75)
-                                                               OVER (PARTITION BY user_stats_config.stats_id) as purchase_details_cnt_percentile_75,
-                                               PERCENTILE_DISC(COALESCE(cnt, 0), 0.9)
-                                                               OVER (PARTITION BY user_stats_config.stats_id) as purchase_details_cnt_percentile_90,
-                               from user_stats_config
-                                        left join event_metrics
-                                                  on event_metrics.uid = user_stats_config.uid
-                                                      and event_metrics.event_name = 'purchase_details'
-                           ) purchase_details_window_metrics using (stats_id)
+--    , user_metrics as
+--     (
+--         with event_metrics as
+--                  (
+--                      select uid,
+--                             stats_id,
+--                             event_name,
+--                             count(uid) as cnt,
+--                             1          as cnt_distinct,
+--                      from (
+--                               select uid,
+--                                      stats_id,
+--                                      event_name,
+--                               from events
+--                                        join user_stats_config using (uid)
+--                               where event_name in ('try_premium_tapped',
+--                                                    'purchase_details',
+--                                                    'portfolio_plaid_link_success')
+--                           ) ttf_events
+--                      group by uid, stats_id, event_name
+--                  )
+--         select stats_id,
+--                users_cnt,
+--                try_premium_tapped_cnt_avg,
+--                try_premium_tapped_cnt_distinct_avg,
+--                purchase_details_cnt_avg,
+--                purchase_details_cnt_distinct_avg,
+--                portfolio_plaid_link_success_cnt_distinct_avg,
+--         from stats_config
+--                  left join (
+--                                select user_stats_config.stats_id,
+--                                       count(distinct user_stats_config.uid) as users_cnt,
+--                                       avg(coalesce(em5.cnt, 0))             as try_premium_tapped_cnt_avg,
+--                                       avg(coalesce(em5.cnt_distinct, 0))    as try_premium_tapped_cnt_distinct_avg,
+--                                       avg(coalesce(em6.cnt, 0))             as purchase_details_cnt_avg,
+--                                       avg(coalesce(em6.cnt_distinct, 0))    as purchase_details_cnt_distinct_avg,
+--                                       avg(coalesce(em7.cnt_distinct, 0))    as portfolio_plaid_link_success_cnt_distinct_avg,
+--                                from user_stats_config
+--                                         left join event_metrics em5
+--                                                   on em5.uid = user_stats_config.uid
+--                                                       and em5.event_name = 'try_premium_tapped'
+--                                         left join event_metrics em6
+--                                                   on em6.uid = user_stats_config.uid
+--                                                       and em6.event_name = 'purchase_details'
+--                                         left join event_metrics em7
+--                                                   on em7.uid = user_stats_config.uid
+--                                                       and em7.event_name = 'portfolio_plaid_link_success'
+--                                group by user_stats_config.stats_id
+--                            ) t using (stats_id)
+--                  left join (
+--                                select distinct user_stats_config.stats_id,
+--                                                PERCENTILE_DISC(COALESCE(cnt, 0), 0.5)
+--                                                                OVER (PARTITION BY user_stats_config.stats_id) as try_premium_tapped_cnt_median,
+--                                                PERCENTILE_DISC(COALESCE(cnt, 0), 0.75)
+--                                                                OVER (PARTITION BY user_stats_config.stats_id) as try_premium_tapped_cnt_percentile_75,
+--                                                PERCENTILE_DISC(COALESCE(cnt, 0), 0.9)
+--                                                                OVER (PARTITION BY user_stats_config.stats_id) as try_premium_tapped_cnt_percentile_90,
+--                                from user_stats_config
+--                                         left join event_metrics
+--                                                   on event_metrics.uid = user_stats_config.uid
+--                                                       and event_metrics.event_name = 'try_premium_tapped'
+--                            ) try_premium_tapped_window_metrics using (stats_id)
+--                  left join (
+--                                select distinct user_stats_config.stats_id,
+--                                                PERCENTILE_DISC(COALESCE(cnt, 0), 0.5)
+--                                                                OVER (PARTITION BY user_stats_config.stats_id) as purchase_details_cnt_median,
+--                                                PERCENTILE_DISC(COALESCE(cnt, 0), 0.75)
+--                                                                OVER (PARTITION BY user_stats_config.stats_id) as purchase_details_cnt_percentile_75,
+--                                                PERCENTILE_DISC(COALESCE(cnt, 0), 0.9)
+--                                                                OVER (PARTITION BY user_stats_config.stats_id) as purchase_details_cnt_percentile_90,
+--                                from user_stats_config
+--                                         left join event_metrics
+--                                                   on event_metrics.uid = user_stats_config.uid
+--                                                       and event_metrics.event_name = 'purchase_details'
+--                            ) purchase_details_window_metrics using (stats_id)
+--
+--     )
 
-    )
+--    , user_metrics as
+--     (
+--         with ticker_metrics as
+--                  (
+--                      select uid,
+--                             stats_id,
+--                             count(symbol) as cnt,
+--                             count(distinct symbol)          as cnt_distinct,
+--                      from (
+--                               select uid,
+--                                      stats_id,
+--                                      event_name,
+--                                      COALESCE(
+--                                          (
+--                                              select p.value.string_value
+--                                              from unnest(events.event_params) as p
+--                                              where p.key = 'ticker_symbol'
+--                                          ),
+--                                          (
+--                                              select p.value.string_value
+--                                              from unnest(events.event_params) as p
+--                                              where p.key = 'tickerSymbol'
+--                                          )
+--                                      ) as symbol
+--                               from events
+--                                        join user_stats_config using (uid)
+--                               where event_name = 'gios_screen_view'
+--                                 and firebase_screen_class = 'TickerViewController'
+--                           ) ttf_events
+--                      where symbol is not null
+--                      group by uid, stats_id
+--              )
+--         select stats_id,
+--                users_cnt,
+--                stock_view_cnt_avg,
+--                stock_view_cnt_distinct_avg,
+--         from stats_config
+--                  left join (
+--                                select user_stats_config.stats_id,
+--                                       count(distinct user_stats_config.uid) as users_cnt,
+--                                       avg(coalesce(sm1.cnt, 0))             as stock_view_cnt_avg,
+--                                       avg(coalesce(sm1.cnt_distinct, 0))    as stock_view_cnt_distinct_avg,
+--                                from user_stats_config
+--                                         left join ticker_metrics sm1
+--                                                   on sm1.uid = user_stats_config.uid
+--                                group by user_stats_config.stats_id
+--                            ) t using (stats_id)
+--     )
 
 -- select stats_id,
 --        stats_description,
